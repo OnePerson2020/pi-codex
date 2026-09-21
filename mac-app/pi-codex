@@ -1,0 +1,91 @@
+#!/bin/sh
+
+set -e
+
+RESOURCES="$(cd "$(dirname "$0")/../Resources" && pwd)"
+BRIDGE="$RESOURCES/pi-codex/pi-app-server.mjs"
+APP_RESOLVER="$RESOURCES/pi-codex/resolve-official-app.sh"
+MODE_FILE="$RESOURCES/pi-codex/install-mode"
+RUNTIME_PATH_FILE="$RESOURCES/pi-codex/runtime-path"
+RUNTIME_VERSION_FILE="$RESOURCES/pi-codex/runtime-version"
+RUNTIME_BUILD_FILE="$RESOURCES/pi-codex/runtime-build"
+
+show_error() {
+  printf '%s\n' "$1" >&2
+  if [ "${PI_DESKTOP_NO_DIALOG:-0}" != "1" ]; then
+    /usr/bin/osascript - "$1" <<'APPLESCRIPT'
+on run argv
+  display dialog item 1 of argv buttons {"OK"} default button "OK" with icon stop
+end run
+APPLESCRIPT
+  fi
+}
+
+[ -x "$BRIDGE" ] || {
+  show_error "Cannot find the Pi app-server adapter. Reinstall pi-codex."
+  exit 1
+}
+[ -f "$APP_RESOLVER" ] || {
+  show_error "Cannot find the ChatGPT/Codex app resolver."
+  exit 1
+}
+
+. "$APP_RESOLVER"
+MODE=$(sed -n '1p' "$MODE_FILE" 2>/dev/null || true)
+case "$MODE" in
+  standalone)
+    APP=$(sed -n '1p' "$RUNTIME_PATH_FILE" 2>/dev/null || true)
+    _resolve_official_app_bundle "$APP" || {
+      show_error "$RESOLVE_OFFICIAL_APP_ERROR"
+      exit 1
+    }
+    EXPECTED_VERSION=$(sed -n '1p' "$RUNTIME_VERSION_FILE" 2>/dev/null || true)
+    EXPECTED_BUILD=$(sed -n '1p' "$RUNTIME_BUILD_FILE" 2>/dev/null || true)
+    ACTUAL_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null || true)
+    ACTUAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist" 2>/dev/null || true)
+    if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ] || [ "$ACTUAL_BUILD" != "$EXPECTED_BUILD" ]; then
+      show_error "Pinned pi-codex runtime changed. Reinstall pi-codex."
+      exit 1
+    fi
+    ;;
+  shared)
+    resolve_official_app || {
+      show_error "$RESOLVE_OFFICIAL_APP_ERROR"
+      exit 1
+    }
+    ;;
+  *)
+    show_error "Invalid pi-codex runtime mode. Reinstall pi-codex."
+    exit 1
+    ;;
+esac
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
+export CODEX_CLI_PATH="$BRIDGE"
+export CODEX_APP_SERVER_FORCE_CLI=1
+export CODEX_HOME="${PI_DESKTOP_CODEX_HOME:-$HOME/.pi/codex-app}"
+export PI_CODING_AGENT_DIR="${PI_DESKTOP_AGENT_DIR:-$HOME/.pi/agent}"
+export CODEX_ELECTRON_USER_DATA_PATH="${PI_DESKTOP_USER_DATA_PATH:-$HOME/Library/Application Support/Pi-Codex}"
+unset NODE_OPTIONS TRAEX_BIN CODEX_TRAEX_DOCK_ICON
+unset PI_DESKTOP_HOST_KIND PI_DESKTOP_SSH_TARGET_JSON PI_DESKTOP_REMOTE
+export PI_DESKTOP_ENABLE_SSH="${PI_DESKTOP_ENABLE_SSH:-$(test ! -f "$RESOURCES/pi-codex/ssh-enabled" || printf 1)}"
+if [ "${PI_DESKTOP_ENABLE_SSH:-0}" = "1" ]; then
+  PATCH="$RESOURCES/pi-codex/src/desktop-ssh-patch.cjs"
+  [ -f "$PATCH" ] || { show_error "Missing pi-codex SSH routing patch."; exit 1; }
+  # A runtime with NODE_OPTIONS disabled will omit the host marker. The bridge
+  # then refuses every launch instead of misrouting an SSH host to local Pi.
+  QUOTED_PATCH=$(printf '%s' "$PATCH" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  export NODE_OPTIONS="--require \"$QUOTED_PATCH\""
+fi
+mkdir -p "$CODEX_HOME"
+
+if [ "$MODE" = "standalone" ]; then
+  set -- \
+    "$@" \
+    -SUAllowsAutomaticUpdates NO \
+    -SUEnableAutomaticChecks NO \
+    -SUAutomaticallyUpdate NO \
+    -SUAutomaticallyDownloadUpdates NO
+fi
+
+exec "$RESOLVED_OFFICIAL_APP_BIN" "--user-data-dir=$CODEX_ELECTRON_USER_DATA_PATH" "$@"

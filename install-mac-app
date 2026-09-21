@@ -1,0 +1,210 @@
+#!/bin/sh
+
+set -e
+
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo "install-mac-app only supports macOS." >&2
+  exit 1
+fi
+
+SELF="$0"
+while [ -h "$SELF" ]; do
+  DIR=$(cd -P "$(dirname "$SELF")" && pwd)
+  SELF=$(readlink "$SELF")
+  case "$SELF" in /*) ;; *) SELF="$DIR/$SELF" ;; esac
+done
+SCRIPT_DIR=$(cd -P "$(dirname "$SELF")" && pwd)
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./install-mac-app [--mode standalone|shared]
+
+Modes:
+  standalone  Copy and pin the current official ChatGPT/Codex runtime.
+  shared      Reuse the installed ChatGPT/Codex runtime on every launch.
+EOF
+}
+
+MODE=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --mode)
+      MODE="$2"
+      shift 2
+      ;;
+    --mode=*)
+      MODE=${1#--mode=}
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [ -z "$MODE" ]; then
+  printf '%s\n' \
+    "Choose the pi-codex runtime strategy:" \
+    "  1. Fully standalone — pin a private ChatGPT/Codex runtime." \
+    "  2. Shared runtime — follow the installed ChatGPT/Codex app."
+  printf 'Enter 1 or 2: '
+  IFS= read -r choice
+  case "$choice" in
+    1) MODE=standalone ;;
+    2) MODE=shared ;;
+    *) echo "Invalid selection." >&2; exit 2 ;;
+  esac
+fi
+
+case "$MODE" in standalone|shared) ;; *) usage; exit 2 ;; esac
+
+APP_BUNDLE="${PI_DESKTOP_APP_BUNDLE:-/Applications/pi-codex.app}"
+APP_PARENT=$(dirname "$APP_BUNDLE")
+APP_NAME=$(basename "$APP_BUNDLE")
+STAGING_BUNDLE="$APP_PARENT/.${APP_NAME}.install.$$"
+BACKUP_BUNDLE="$APP_PARENT/.${APP_NAME}.backup.$$"
+RUNTIME_ROOT="$APP_PARENT/.${APP_NAME}.runtime"
+RUNTIME_STAGING="$APP_PARENT/.${APP_NAME}.runtime.install.$$"
+RUNTIME_BACKUP="$APP_PARENT/.${APP_NAME}.runtime.backup.$$"
+CONTENTS="$STAGING_BUNDLE/Contents"
+MACOS="$CONTENTS/MacOS"
+RESOURCES="$CONTENTS/Resources"
+BRIDGE_RESOURCES="$RESOURCES/pi-codex"
+ICON_FILE="$SCRIPT_DIR/mac-app/Pi.icns"
+
+for required in \
+  package.json \
+  pi-app-server.mjs \
+  resolve-official-app.sh \
+  src/pi-host.mjs \
+  src/pi-web-status.mjs \
+  src/pi-sdk.mjs \
+  src/ssh-transport.mjs \
+  src/desktop-ssh-patch.cjs \
+  src/desktop-mcp.mjs \
+  src/persistent-host.mjs \
+  src/project-store.mjs \
+  src/protocol.mjs \
+  src/session-guard.mjs \
+  src/session-liveness.mjs \
+  scripts/enable-private-runtime.py \
+  "mac-app/Info.plist" \
+  "mac-app/pi-codex" \
+  "mac-app/Pi.icns"
+do
+  [ -f "$SCRIPT_DIR/$required" ] || {
+    echo "Missing $required." >&2
+    exit 1
+  }
+done
+
+command -v node >/dev/null 2>&1 || {
+  echo "Node.js 22.19+ is required." >&2
+  exit 1
+}
+command -v pi >/dev/null 2>&1 || {
+  echo "Pi Coding Agent is required." >&2
+  exit 1
+}
+
+. "$SCRIPT_DIR/resolve-official-app.sh"
+resolve_official_app || {
+  echo "$RESOLVE_OFFICIAL_APP_ERROR" >&2
+  exit 1
+}
+OFFICIAL_APP="$RESOLVED_OFFICIAL_APP"
+OFFICIAL_PLIST="$OFFICIAL_APP/Contents/Info.plist"
+RUNTIME_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$OFFICIAL_PLIST" 2>/dev/null || true)
+RUNTIME_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$OFFICIAL_PLIST" 2>/dev/null || true)
+
+cleanup() {
+  rm -rf "$STAGING_BUNDLE" "$RUNTIME_STAGING"
+  if [ "${INSTALL_COMPLETE:-0}" = "1" ]; then return; fi
+  [ "${APP_INSTALLED:-0}" = "1" ] && rm -rf "$APP_BUNDLE"
+  [ -e "$BACKUP_BUNDLE" ] && mv "$BACKUP_BUNDLE" "$APP_BUNDLE"
+  [ "${RUNTIME_INSTALLED:-0}" = "1" ] && rm -rf "$RUNTIME_ROOT"
+  [ -e "$RUNTIME_BACKUP" ] && mv "$RUNTIME_BACKUP" "$RUNTIME_ROOT"
+}
+INSTALL_COMPLETE=0
+APP_INSTALLED=0
+RUNTIME_INSTALLED=0
+trap cleanup EXIT HUP INT TERM
+
+mkdir -p "$APP_PARENT"
+rm -rf "$STAGING_BUNDLE" "$BACKUP_BUNDLE" "$RUNTIME_STAGING" "$RUNTIME_BACKUP"
+mkdir -p "$MACOS" "$BRIDGE_RESOURCES/src"
+install -m 644 "$SCRIPT_DIR/mac-app/Info.plist" "$CONTENTS/Info.plist"
+install -m 755 "$SCRIPT_DIR/mac-app/pi-codex" "$MACOS/pi-codex"
+install -m 755 "$SCRIPT_DIR/pi-app-server.mjs" "$BRIDGE_RESOURCES/pi-app-server.mjs"
+install -m 755 "$SCRIPT_DIR/resolve-official-app.sh" "$BRIDGE_RESOURCES/resolve-official-app.sh"
+install -m 644 "$SCRIPT_DIR/package.json" "$BRIDGE_RESOURCES/package.json"
+install -m 644 "$SCRIPT_DIR/src/pi-host.mjs" "$BRIDGE_RESOURCES/src/pi-host.mjs"
+install -m 644 "$SCRIPT_DIR/src/pi-web-status.mjs" "$BRIDGE_RESOURCES/src/pi-web-status.mjs"
+install -m 644 "$SCRIPT_DIR/src/pi-sdk.mjs" "$BRIDGE_RESOURCES/src/pi-sdk.mjs"
+install -m 644 "$SCRIPT_DIR/src/ssh-transport.mjs" "$BRIDGE_RESOURCES/src/ssh-transport.mjs"
+install -m 644 "$SCRIPT_DIR/src/desktop-ssh-patch.cjs" "$BRIDGE_RESOURCES/src/desktop-ssh-patch.cjs"
+install -m 644 "$SCRIPT_DIR/src/desktop-mcp.mjs" "$BRIDGE_RESOURCES/src/desktop-mcp.mjs"
+install -m 644 "$SCRIPT_DIR/src/persistent-host.mjs" "$BRIDGE_RESOURCES/src/persistent-host.mjs"
+install -m 644 "$SCRIPT_DIR/src/project-store.mjs" "$BRIDGE_RESOURCES/src/project-store.mjs"
+install -m 644 "$SCRIPT_DIR/src/protocol.mjs" "$BRIDGE_RESOURCES/src/protocol.mjs"
+install -m 644 "$SCRIPT_DIR/src/session-guard.mjs" "$BRIDGE_RESOURCES/src/session-guard.mjs"
+install -m 644 "$SCRIPT_DIR/src/session-liveness.mjs" "$BRIDGE_RESOURCES/src/session-liveness.mjs"
+install -m 644 "$ICON_FILE" "$RESOURCES/Pi.icns"
+
+printf '%s\n' "$MODE" > "$BRIDGE_RESOURCES/install-mode"
+printf '%s\n' "$OFFICIAL_APP" > "$BRIDGE_RESOURCES/runtime-source"
+printf '%s\n' "$RUNTIME_ROOT/Official.app" > "$BRIDGE_RESOURCES/runtime-path"
+printf '%s\n' "$RUNTIME_VERSION" > "$BRIDGE_RESOURCES/runtime-version"
+printf '%s\n' "$RUNTIME_BUILD" > "$BRIDGE_RESOURCES/runtime-build"
+
+if [ "$MODE" = "standalone" ]; then
+  printf '1\n' > "$BRIDGE_RESOURCES/ssh-enabled"
+  mkdir -p "$RUNTIME_STAGING"
+  /usr/bin/ditto "$OFFICIAL_APP" "$RUNTIME_STAGING/Official.app"
+
+  # macOS assigns the running Dock item to the inner Electron bundle. Apply
+  # Pi's official badge to the private runtime copy so Finder and Dock agree,
+  # while leaving the installed ChatGPT/Codex app untouched.
+  RUNTIME_COPY="$RUNTIME_STAGING/Official.app"
+  RUNTIME_PLIST="$RUNTIME_COPY/Contents/Info.plist"
+  install -m 644 "$ICON_FILE" "$RUNTIME_COPY/Contents/Resources/Pi.icns"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile Pi.icns" "$RUNTIME_PLIST"
+  /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$RUNTIME_PLIST" >/dev/null 2>&1 || true
+  python3 "$SCRIPT_DIR/scripts/enable-private-runtime.py" "$RUNTIME_COPY" >/dev/null || {
+    echo "Failed to enable NODE_OPTIONS in the pinned pi-codex runtime." >&2
+    exit 1
+  }
+  codesign --force --deep --sign - --timestamp=none "$RUNTIME_COPY" >/dev/null 2>&1 || {
+    echo "Failed to re-sign the pinned pi-codex runtime after applying its icon and SSH fuse." >&2
+    exit 1
+  }
+  codesign --verify --deep --strict "$RUNTIME_COPY" >/dev/null 2>&1 || {
+    echo "Pinned pi-codex runtime failed signature verification after applying its icon." >&2
+    exit 1
+  }
+fi
+
+[ -e "$APP_BUNDLE" ] && mv "$APP_BUNDLE" "$BACKUP_BUNDLE"
+[ -e "$RUNTIME_ROOT" ] && mv "$RUNTIME_ROOT" "$RUNTIME_BACKUP"
+if [ "$MODE" = "standalone" ]; then
+  mv "$RUNTIME_STAGING" "$RUNTIME_ROOT"
+  RUNTIME_INSTALLED=1
+fi
+mv "$STAGING_BUNDLE" "$APP_BUNDLE"
+APP_INSTALLED=1
+INSTALL_COMPLETE=1
+rm -rf "$BACKUP_BUNDLE" "$RUNTIME_BACKUP"
+trap - EXIT HUP INT TERM
+touch "$APP_BUNDLE"
+
+echo "Installed $APP_BUNDLE"
+echo "pi-codex runtime mode: $MODE"
+echo "Runtime source: $OFFICIAL_APP"
+echo "Runtime version: ${RUNTIME_VERSION:-unknown} (${RUNTIME_BUILD:-unknown})"
+echo "Launch with: open -n \"$APP_BUNDLE\""

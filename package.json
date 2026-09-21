@@ -1,0 +1,13 @@
+{
+  "name": "pi-codex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "smoke": "node tests/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

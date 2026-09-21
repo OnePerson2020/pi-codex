@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.pyc
+__pycache__/
+
+# Local validation notes and generated code indexes
+/docs/
+/graft/
