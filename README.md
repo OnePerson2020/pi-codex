@@ -60,6 +60,10 @@ open -n "/Applications/pi-codex.app"
 
 The bootstrap downloads the [latest release](https://github.com/OnePerson2020/pi-codex/releases/latest) and installs it in `standalone` mode. Use `| sh -s -- --mode shared` to reuse the installed runtime instead, or set `PI_CODEX_TAG=v0.1.0` to pin a version.
 
+### Install from a DMG
+
+Download the `.dmg` from the same release, open it, and right-click `Install pi-codex.command` → Open. The image is not notarized, so macOS asks for that confirmation the first time. The installer asks for the runtime mode and installs `pi-codex.app` into `/Applications`; it removes the download quarantine flag from what it installs. Rebuild the image from a checkout with `./scripts/package-mac-dmg.sh`.
+
 ### Install from a checkout
 
 ```bash
@@ -73,6 +77,18 @@ open -n "/Applications/pi-codex.app"
 `standalone` copies the installed desktop runtime into a private app-owned location and disables its automatic updates. It does not modify the original app. For local debugging, `--mode shared` reuses the installed runtime directly.
 
 Pi resources continue to load from your normal agent directory, usually `~/.pi/agent`. You do not need to reinstall extensions or skills.
+
+## Linux execution host
+
+Remote projects run on a Linux machine that owns its own Pi config, model credentials, and sessions. Deploy the headless host and its systemd user service there:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install-linux.sh | sh
+```
+
+The deployment lands in `~/.local/share/pi-desktop` with the Pi SDK version the macOS bridge accepts for remote hosts. It needs Node.js 22.19+ and a `systemd --user` session; `sudo loginctl enable-linger "$USER"` keeps the host alive after logout.
+
+Requires the same release flow as macOS: `PI_CODEX_TAG=v0.1.0` pins a version.
 
 ## Run without installing the app
 

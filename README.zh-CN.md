@@ -60,6 +60,10 @@ open -n "/Applications/pi-codex.app"
 
 引导脚本会下载[最新 release](https://github.com/OnePerson2020/pi-codex/releases/latest) 并以 `standalone` 模式安装。改用 `| sh -s -- --mode shared` 可复用已安装的运行时；设置 `PI_CODEX_TAG=v0.1.0` 可固定版本。
 
+### 从 DMG 安装
+
+从同一个 release 下载 `.dmg`，打开后右键 `Install pi-codex.command` → 打开。该镜像未做公证，因此首次打开需要这一步确认。安装器会询问运行时模式，把 `pi-codex.app` 装到 `/Applications`，并清除安装产物的下载隔离标记。可在源码目录用 `./scripts/package-mac-dmg.sh` 重新构建镜像。
+
 ### 从源码安装
 
 ```bash
@@ -73,6 +77,18 @@ open -n "/Applications/pi-codex.app"
 `standalone` 会把已安装的桌面运行时复制到应用私有目录，并关闭该副本的自动更新。原始应用不会被修改。本地调试时，可以使用 `--mode shared` 直接复用已安装的运行时。
 
 Pi 资源仍从原有 agent 目录加载，通常是 `~/.pi/agent`。无需重新安装扩展或 skills。
+
+## Linux 执行主机
+
+远程项目运行在 Linux 机器上，该机器拥有自己的 Pi 配置、模型凭据和 session。在该机器上部署 headless host 及其 systemd user service：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install-linux.sh | sh
+```
+
+部署目录为 `~/.local/share/pi-desktop`，其中的 Pi SDK 版本与 macOS bridge 接受的远程版本一致。需要 Node.js 22.19+ 和 `systemd --user` 会话；`sudo loginctl enable-linger "$USER"` 可让 host 在登出后继续运行。
+
+版本固定方式与 macOS 相同：`PI_CODEX_TAG=v0.1.0`。
 
 ## 不安装应用，直接运行
 
