@@ -1,5 +1,7 @@
 # pi-codex
 
+English | [简体中文](README.zh-CN.md)
+
 Use the Codex desktop UI with the Pi coding agent harness.
 
 Pi still runs the agent. It owns the model providers, agent loop, context and compaction, tools, extensions, skills, MCP servers, subagents, and native session files. The Codex app supplies the desktop interface: projects, session history, streaming responses, tool cards, model controls, and the composer.
