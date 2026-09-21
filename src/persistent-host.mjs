@@ -2,6 +2,7 @@ import net from "node:net";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { isImmediateMethod } from "./process-host.mjs";
 
 const MAX_FRAME = 16 * 1024 * 1024;
 const MAX_QUEUE = 32 * 1024 * 1024;
@@ -73,7 +74,7 @@ export async function servePersistentHost(host, socketPath) {
 					responses.set(id, { socket, id: message.id }); message.id = id;
 				}
 				const run = () => host.handle(message);
-				if (message.method === "turn/interrupt") { void run(); continue; }
+				if (isImmediateMethod(message.method)) { void run(); continue; }
 				queuedBytes += bytes; pendingCount++;
 				tail = tail.then(run).catch((error) => console.error(error)).finally(() => { queuedBytes -= bytes; pendingCount--; });
 			}

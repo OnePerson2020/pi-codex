@@ -21,6 +21,7 @@ import {
 	threadFromSessionInfo,
 	usageBreakdown,
 } from "./protocol.mjs";
+import { ProcessHost } from "./process-host.mjs";
 import { ProjectStore, projectIdForThread } from "./project-store.mjs";
 import { acquireSessionGuard, assertSessionAvailable } from "./session-guard.mjs";
 import { sessionLivenessRegistry } from "./session-liveness.mjs";
@@ -64,6 +65,7 @@ export class PiHost {
 		this.resolvedRequests = new Map();
 		this.executing = new Map();
 		this.sessionLiveness = sessionLivenessRegistry();
+		this.processes = new ProcessHost({ send: (message) => this.send(message) });
 		this.projectStore = new ProjectStore({ codexHome: this.codexHome });
 		this.trustStore = new sdk.ProjectTrustStore(this.agentDir);
 		this.initialized = false;
@@ -328,6 +330,14 @@ export class PiHost {
 				return this.updateProject(params);
 			case "project/move":
 				return this.moveProject(params);
+			case "process/spawn":
+				return this.processes.spawn(params);
+			case "process/writeStdin":
+				return this.processes.writeStdin(params);
+			case "process/resizePty":
+				return this.processes.resizePty(params);
+			case "process/kill":
+				return this.processes.kill(params);
 			case "project/delete":
 				return this.deleteProject(params);
 			default:
@@ -2100,6 +2110,7 @@ export class PiHost {
 		this.cancelRequests();
 		await Promise.allSettled(this.opening.values());
 		await Promise.all([...this.threads.keys()].map((threadId) => this.disposeThread(threadId)));
+		this.processes.disposeAll();
 		this.views.clear();
 	}
 }

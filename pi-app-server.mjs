@@ -3,6 +3,7 @@
 import { desktopSshTarget, relaySsh, requireRemoteSdkVersion } from "./src/ssh-transport.mjs";
 import { loadPiSdk } from "./src/pi-sdk.mjs";
 import { PiHost } from "./src/pi-host.mjs";
+import { isImmediateMethod } from "./src/process-host.mjs";
 import { PiWebStatus } from "./src/pi-web-status.mjs";
 import { splitStrictJsonLines } from "./src/protocol.mjs";
 import { desktopMcpExtension, desktopMcpFromArgs } from "./src/desktop-mcp.mjs";
@@ -92,7 +93,7 @@ const onLine = splitStrictJsonLines((line) => {
 
 	logMethod("app->pi", message);
 	if (host.closing) return;
-	if ((!message.method && Object.hasOwn(message, "id")) || message.method === "turn/interrupt") {
+	if ((!message.method && Object.hasOwn(message, "id")) || isImmediateMethod(message.method)) {
 		void host.handle(message);
 		return;
 	}
