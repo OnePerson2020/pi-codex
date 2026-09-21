@@ -88,7 +88,7 @@ curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install
 
 部署目录为 `~/.local/share/pi-desktop`，其中的 Pi SDK 版本与 macOS bridge 接受的远程版本一致。需要 Node.js 22.19+ 和 `systemd --user` 会话；`sudo loginctl enable-linger "$USER"` 可让 host 在登出后继续运行。
 
-版本固定方式与 macOS 相同：`PI_CODEX_TAG=v0.1.0`。
+版本固定方式与 macOS 相同：`PI_CODEX_TAG=v0.1.0`。如果该机器无法访问 GitHub，可把 release tarball 复制过去，从 tarball 中取出 `install-linux.sh` 并以 `PI_CODEX_SOURCE=/tmp/pi-codex-0.1.0.tar.gz` 运行。
 
 ## 不安装应用，直接运行
 

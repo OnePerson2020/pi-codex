@@ -3,8 +3,10 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install-linux.sh | sh
 #
-# Set PI_CODEX_TAG to pin a release. The deployment owns the Pi SDK version the
-# macOS bridge accepts for remote hosts, so both sides agree after an update.
+# Set PI_CODEX_TAG to pin a release. On a host without GitHub access, copy a
+# release tarball over and point PI_CODEX_SOURCE at it (a gzipped tar: local path
+# or URL). The deployment owns the Pi SDK version the macOS bridge accepts for
+# remote hosts, so both sides agree after an update.
 
 set -eu
 
@@ -13,6 +15,7 @@ SDK_VERSION=0.85.1
 TARGET=$HOME/.local/share/pi-desktop
 UNIT=$HOME/.config/systemd/user/pi-desktop-host.service
 TAG=${PI_CODEX_TAG:-}
+SOURCE=${PI_CODEX_SOURCE:-}
 
 die() { echo "$1" >&2; exit 1; }
 
@@ -23,24 +26,42 @@ node -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<22||(a==
   die "Node.js 22.19+ is required (found $(node -v))."
 systemctl --user show-environment >/dev/null 2>&1 || die "A systemd --user session is required."
 
-if [ -z "$TAG" ]; then
-  TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" |
-    sed -n 's#.*/tag/##p')
+if [ -z "$SOURCE" ]; then
+  if [ -z "$TAG" ]; then
+    TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" |
+      sed -n 's#.*/tag/##p')
+  fi
+  [ -n "$TAG" ] || die "Could not resolve the latest $REPO release. Without GitHub access, set PI_CODEX_SOURCE to a local tarball."
 fi
-[ -n "$TAG" ] || die "Could not resolve the latest $REPO release."
+
+fetch_source() {
+  if [ -z "$SOURCE" ]; then
+    curl -fsSL "https://github.com/$REPO/archive/refs/tags/$TAG.tar.gz"
+  elif [ "${SOURCE#*://}" != "$SOURCE" ]; then
+    curl -fsSL "$SOURCE"
+  else
+    [ -f "$SOURCE" ] || die "$SOURCE does not exist."
+    cat "$SOURCE"
+  fi
+}
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/pi-codex.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
 
-printf 'Deploying pi-codex %s to %s\n' "$TAG" "$TARGET"
-curl -fsSL "https://github.com/$REPO/archive/refs/tags/$TAG.tar.gz" | tar -xz -C "$WORK" --strip-components=1
-[ -f "$WORK/scripts/install-linux-host.sh" ] || die "Release $TAG is missing scripts/install-linux-host.sh."
+printf 'Deploying pi-codex %s to %s\n' "${SOURCE:-$TAG}" "$TARGET"
+mkdir -p "$WORK/raw"
+fetch_source > "$WORK/source.tar.gz"
+tar -xzf "$WORK/source.tar.gz" -C "$WORK/raw"
+# GitHub archives carry a top-level directory, git archive output does not.
+TREE=$(find "$WORK/raw" -maxdepth 3 -path '*/scripts/install-linux-host.sh' -print -quit)
+[ -n "$TREE" ] || die "That source has no scripts/install-linux-host.sh."
+TREE=$(dirname "$(dirname "$TREE")")
 
 mkdir -p "$TARGET/src" "$TARGET/scripts"
-install -m 755 "$WORK/pi-app-server.mjs" "$TARGET/pi-app-server.mjs"
-install -m 644 "$WORK/package.json" "$TARGET/package.json"
-cp -R "$WORK/src/." "$TARGET/src/"
-install -m 755 "$WORK/scripts/install-linux-host.sh" "$TARGET/scripts/install-linux-host.sh"
+install -m 755 "$TREE/pi-app-server.mjs" "$TARGET/pi-app-server.mjs"
+install -m 644 "$TREE/package.json" "$TARGET/package.json"
+cp -R "$TREE/src/." "$TARGET/src/"
+install -m 755 "$TREE/scripts/install-linux-host.sh" "$TARGET/scripts/install-linux-host.sh"
 
 if [ ! -d "$TARGET/sdk/node_modules/@earendil-works/pi-coding-agent" ]; then
   command -v npm >/dev/null 2>&1 ||

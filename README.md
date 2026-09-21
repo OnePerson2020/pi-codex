@@ -88,7 +88,7 @@ curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install
 
 The deployment lands in `~/.local/share/pi-desktop` with the Pi SDK version the macOS bridge accepts for remote hosts. It needs Node.js 22.19+ and a `systemd --user` session; `sudo loginctl enable-linger "$USER"` keeps the host alive after logout.
 
-Requires the same release flow as macOS: `PI_CODEX_TAG=v0.1.0` pins a version.
+Requires the same release flow as macOS: `PI_CODEX_TAG=v0.1.0` pins a version. A host without GitHub access can take a copied release tarball instead: run `install-linux.sh` from that tarball with `PI_CODEX_SOURCE=/tmp/pi-codex-0.1.0.tar.gz`.
 
 ## Run without installing the app
 
