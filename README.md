@@ -51,6 +51,17 @@ Existing Pi sessions are listed by project and opened in place. They are not imp
 
 The repository does not contain or redistribute the Codex desktop runtime. The installer uses an app already installed on your Mac.
 
+### Install a release
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install.sh | sh
+open -n "/Applications/pi-codex.app"
+```
+
+The bootstrap downloads the [latest release](https://github.com/OnePerson2020/pi-codex/releases/latest) and installs it in `standalone` mode. Use `| sh -s -- --mode shared` to reuse the installed runtime instead, or set `PI_CODEX_TAG=v0.1.0` to pin a version.
+
+### Install from a checkout
+
 ```bash
 git clone https://github.com/OnePerson2020/pi-codex.git
 cd pi-codex

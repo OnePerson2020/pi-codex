@@ -51,6 +51,17 @@ Codex 桌面应用
 
 本仓库不包含或分发 Codex 桌面运行时。安装脚本会使用 Mac 上已有的官方应用。
 
+### 安装 release
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OnePerson2020/pi-codex/main/install.sh | sh
+open -n "/Applications/pi-codex.app"
+```
+
+引导脚本会下载[最新 release](https://github.com/OnePerson2020/pi-codex/releases/latest) 并以 `standalone` 模式安装。改用 `| sh -s -- --mode shared` 可复用已安装的运行时；设置 `PI_CODEX_TAG=v0.1.0` 可固定版本。
+
+### 从源码安装
+
 ```bash
 git clone https://github.com/OnePerson2020/pi-codex.git
 cd pi-codex
