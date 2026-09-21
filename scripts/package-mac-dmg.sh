@@ -5,7 +5,8 @@
 #
 # The image carries the bridge payload and a double-clickable installer. It does
 # not carry the Codex desktop runtime: the installer copies that runtime from the
-# official ChatGPT/Codex app already installed on the target Mac.
+# official ChatGPT/Codex app already installed on the target Mac. The payload is
+# the committed tree of HEAD, so uncommitted edits never end up in an image.
 
 set -eu
 
@@ -26,9 +27,9 @@ STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pi-codex-dmg.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT HUP INT TERM
 
 mkdir -p "$STAGE/.payload"
-tar -C "$REPO_ROOT" -cf - \
-  --exclude ./.git --exclude ./dist --exclude ./docs --exclude ./graft \
-  --exclude ./tests --exclude node_modules --exclude .DS_Store . |
+git -C "$REPO_ROOT" diff --quiet 2>/dev/null ||
+  printf 'Note: building the committed tree; uncommitted changes are not included.\n' >&2
+git -C "$REPO_ROOT" archive --format tar HEAD -- . ':(exclude)tests' |
   tar -C "$STAGE/.payload" -xf -
 
 cat > "$STAGE/Install pi-codex.command" <<'COMMAND'
